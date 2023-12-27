@@ -1,0 +1,111 @@
+# For most projects, this workflow file will not need changing; you simply need
+# to commit it to your repository.
+#
+# You may wish to alter this file to override the set of languages analyzed,
+# or to provide custom queries or build logic.
+#
+# ******** NOTE ********
+# We have attempted to detect the languages in your repository. Please check
+# the `language` matrix defined below to confirm you have the correct set of
+# supported CodeQL languages.
+#
+name: "CodeQL Analysis"
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    # The branches below must be a subset of the branches above
+    branches: [ "main" ]
+  schedule:
+    - cron: '41 15 * * 5'
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    env:
+      CMAKE_BUILD_TYPE: Release
+
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+        - name: Ubuntu
+          os: ubuntu-latest
+          arch: x86_64 # as reported by `arch` or `uname -m`
+          compiler_cache: ccache
+          compiler_cache_path: ~/.ccache
+          language: 'cpp'  # CodeQL supports [ 'cpp', 'csharp', 'go', 'java', 'javascript', 'python' ]
+          vcpkg_binary_cache: ~/.cache/vcpkg
+          vcpkg_triplet: x64-linux
+
+    steps:
+
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        submodules: true
+
+    - name: Install dependencies
+      run: |
+        exec bash "scripts/ci/dependencies.sh"
+
+    - name: Get Git commit of vcpkg submodule
+      run: echo VCPKG_COMMIT=$(git ls-tree HEAD vcpkg | awk '{print $3}') >> ${GITHUB_ENV}
+
+    - name: Setup vcpkg cache
+      uses: actions/cache@v3
+      with:
+        # cache the vcpkg executable to avoid having to bootstrap vcpkg every time
+        path: |
+          ${{ github.workspace }}/vcpkg/vcpkg${{ matrix.config.exe_suffix }}
+          ${{ matrix.config.vcpkg_binary_cache }}
+        key: ${{ matrix.config.name }}-${{ hashFiles('**/vcpkg.json') }}-${{ env.VCPKG_COMMIT }}-${{ github.run_number }}
+        restore-keys: |
+          ${{ matrix.config.name }}-${{ hashFiles(' **/vcpkg.json') }}-${{ env.VCPKG_COMMIT }}-
+          ${{ matrix.config.name }}-${{ hashFiles(' **/vcpkg.json') }}-
+          ${{ matrix.config.name }}-
+
+    - name: "Set up compiler cache"
+      uses: actions/cache@v3
+      with:
+        path: ${{ matrix.config.compiler_cache_path }}
+        key: ${{ matrix.config.os }}-${{ matrix.config.arch }}-${{ github.head_ref }}-${{ github.run_number }}
+        restore-keys: |
+          ${{ matrix.config.os }}-${{ matrix.config.arch }}-${{ github.head_ref }}-
+          ${{ matrix.config.os }}-${{ matrix.config.arch }}-
+
+    - name: Configure
+      run: >-
+        cmake
+        -G Ninja
+        -D CMAKE_BUILD_TYPE=${{ env.CMAKE_BUILD_TYPE }}
+        -D CMAKE_INSTALL_PREFIX=${{ github.workspace }}/build/install
+        -D VCPKG=ON
+        -S .
+        -B build
+      env:
+        CC: ${{ matrix.config.cc }}
+        CXX: ${{ matrix.config.cxx }}
+
+    # Initializes the CodeQL tools for scanning.
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v2
+      with:
+        languages: ${{ matrix.language }}
+        # If you wish to specify custom queries, you can do so here or in a config file.
+        # By default, queries listed here will override any specified in a config file.
+        # Prefix the list here with "+" to use these queries and those in the config file.
+        # queries: ./path/to/local/query, your-org/your-repo/queries@main
+
+    - name: Build
+      run: cmake --build build --config ${{ env.CMAKE_BUILD_TYPE }} --verbose
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v2

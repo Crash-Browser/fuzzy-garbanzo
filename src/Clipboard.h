@@ -1,0 +1,58 @@
+/**********************************************************************
+
+  Audacity: A Digital Audio Editor
+
+  Clipboard.h
+
+  Paul Licameli
+
+**********************************************************************/
+
+#ifndef __AUDACITY_CLIPBOARD__
+#define __AUDACITY_CLIPBOARD__
+
+
+#include <memory>
+#include <wx/event.h> // to inherit wxEvtHandler
+
+class TenacityProject;
+class TrackList;
+
+// An event emitted by the clipboard whenever its contents change.
+wxDECLARE_EXPORTED_EVENT( TENACITY_DLL_API,
+                          EVT_CLIPBOARD_CHANGE, wxCommandEvent );
+
+class TENACITY_DLL_API Clipboard final
+   : public wxEvtHandler
+{
+public:
+   static Clipboard &Get();
+
+   const TrackList &GetTracks() const;
+
+   double T0() const { return mT0; }
+   double T1() const { return mT1; }
+   double Duration() const { return mT1 - mT0; }
+
+   const std::weak_ptr<TenacityProject> &Project() const { return mProject; }
+
+   void Clear();
+   
+   void Assign(
+     TrackList && newContents, double t0, double t1,
+     const std::weak_ptr<TenacityProject> &pProject );
+
+   Clipboard();
+   ~Clipboard();
+
+   void Swap( Clipboard &other );
+
+private:
+
+   std::shared_ptr<TrackList> mTracks;
+   std::weak_ptr<TenacityProject> mProject{};
+   double mT0{ 0 };
+   double mT1{ 0 };
+};
+
+#endif
